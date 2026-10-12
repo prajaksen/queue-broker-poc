@@ -1,0 +1,775 @@
+{
+  "environment": {
+    "ran_at": "2026-10-12T20:21:13+00:00",
+    "platform": "Darwin arm64",
+    "python": "3.13.15",
+    "celery": "5.6.3",
+    "pool": "threads",
+    "redis_server": "7.4.10",
+    "postgres_server": "16.15",
+    "settings": {
+      "stale_seconds": 6,
+      "republish_seconds": 4,
+      "sweep_seconds": 2.0,
+      "reminder_seconds": 2.0
+    }
+  },
+  "cases": [
+    {
+      "number": 1,
+      "title": "A worker is killed mid-job",
+      "did": "Started a 3-second job, then sent SIGKILL to the worker while it was running.",
+      "expect": "The job runs again on another worker and finishes exactly once.",
+      "passed": true,
+      "observed": "Row stayed 'running' after the kill. The sweep queued it again and a second worker finished it 12s later. attempts=2, finished=1.",
+      "seconds": 13.03,
+      "events": [
+        {
+          "subject": "job:1",
+          "event": "accepted",
+          "detail": "mail sleep=3",
+          "t": 0.014
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "",
+          "t": 0.065
+        },
+        {
+          "subject": "job:1",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.067
+        },
+        {
+          "subject": "chaos",
+          "event": "chaos",
+          "detail": "worker killed",
+          "t": 1.103
+        },
+        {
+          "subject": "job:1",
+          "event": "stale",
+          "detail": "worker stopped mid-job",
+          "t": 9.711
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "by the sweep",
+          "t": 9.731
+        },
+        {
+          "subject": "job:1",
+          "event": "claimed",
+          "detail": "attempt 2",
+          "t": 9.769
+        },
+        {
+          "subject": "job:1",
+          "event": "finished",
+          "detail": "",
+          "t": 12.791
+        }
+      ],
+      "jobs": [
+        {
+          "id": 1,
+          "kind": "mail",
+          "value": "sleep=3",
+          "status": "done",
+          "attempts": 2,
+          "effects": 1,
+          "last_error": "worker stopped mid-job"
+        }
+      ],
+      "outbox": []
+    },
+    {
+      "number": 2,
+      "title": "Redis is wiped with jobs queued",
+      "did": "Queued five jobs with no worker running, then deleted everything in Redis.",
+      "expect": "All five jobs still finish, because their rows are in Postgres.",
+      "passed": true,
+      "observed": "Redis held 5 messages, then 0 after the wipe. The sweep published all 5 again from Postgres; each finished once (5 finishes).",
+      "seconds": 8.86,
+      "events": [
+        {
+          "subject": "job:1",
+          "event": "accepted",
+          "detail": "mail sleep=0.1",
+          "t": 0.014
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "",
+          "t": 0.034
+        },
+        {
+          "subject": "job:2",
+          "event": "accepted",
+          "detail": "mail sleep=0.1",
+          "t": 0.053
+        },
+        {
+          "subject": "job:2",
+          "event": "published",
+          "detail": "",
+          "t": 0.07
+        },
+        {
+          "subject": "job:3",
+          "event": "accepted",
+          "detail": "mail sleep=0.1",
+          "t": 0.086
+        },
+        {
+          "subject": "job:3",
+          "event": "published",
+          "detail": "",
+          "t": 0.105
+        },
+        {
+          "subject": "job:4",
+          "event": "accepted",
+          "detail": "mail sleep=0.1",
+          "t": 0.12
+        },
+        {
+          "subject": "job:4",
+          "event": "published",
+          "detail": "",
+          "t": 0.14
+        },
+        {
+          "subject": "job:5",
+          "event": "accepted",
+          "detail": "mail sleep=0.1",
+          "t": 0.158
+        },
+        {
+          "subject": "job:5",
+          "event": "published",
+          "detail": "",
+          "t": 0.181
+        },
+        {
+          "subject": "chaos",
+          "event": "chaos",
+          "detail": "Redis wiped",
+          "t": 1.228
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "by the sweep",
+          "t": 6.811
+        },
+        {
+          "subject": "job:3",
+          "event": "published",
+          "detail": "by the sweep",
+          "t": 6.812
+        },
+        {
+          "subject": "job:5",
+          "event": "published",
+          "detail": "by the sweep",
+          "t": 6.812
+        },
+        {
+          "subject": "job:4",
+          "event": "published",
+          "detail": "by the sweep",
+          "t": 6.812
+        },
+        {
+          "subject": "job:2",
+          "event": "published",
+          "detail": "by the sweep",
+          "t": 6.812
+        },
+        {
+          "subject": "job:2",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 6.98
+        },
+        {
+          "subject": "job:1",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 6.98
+        },
+        {
+          "subject": "job:3",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 6.989
+        },
+        {
+          "subject": "job:4",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 7.003
+        },
+        {
+          "subject": "job:2",
+          "event": "finished",
+          "detail": "",
+          "t": 7.118
+        },
+        {
+          "subject": "job:1",
+          "event": "finished",
+          "detail": "",
+          "t": 7.133
+        },
+        {
+          "subject": "job:3",
+          "event": "finished",
+          "detail": "",
+          "t": 7.135
+        },
+        {
+          "subject": "job:4",
+          "event": "finished",
+          "detail": "",
+          "t": 7.141
+        },
+        {
+          "subject": "job:5",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 8.514
+        },
+        {
+          "subject": "job:5",
+          "event": "finished",
+          "detail": "",
+          "t": 8.634
+        }
+      ],
+      "jobs": [
+        {
+          "id": 1,
+          "kind": "mail",
+          "value": "sleep=0.1",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 2,
+          "kind": "mail",
+          "value": "sleep=0.1",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 3,
+          "kind": "mail",
+          "value": "sleep=0.1",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 4,
+          "kind": "mail",
+          "value": "sleep=0.1",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 5,
+          "kind": "mail",
+          "value": "sleep=0.1",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        }
+      ],
+      "outbox": []
+    },
+    {
+      "number": 3,
+      "title": "A timed reminder comes due",
+      "did": "Stored a reminder due in 3 seconds, then tried to fire it twice and to add its send twice.",
+      "expect": "It fires after the due time, from Postgres, and is sent once.",
+      "passed": true,
+      "observed": "Beat fired the reminder after its due time and wrote 1 outbox row, sent 1 time. A second insert with the same key was refused.",
+      "seconds": 9.72,
+      "events": [
+        {
+          "subject": "reminder:1",
+          "event": "reminder_set",
+          "detail": "due in 3s",
+          "t": 0.012
+        },
+        {
+          "subject": "outbox:1",
+          "event": "outbox_added",
+          "detail": "reminder:1",
+          "t": 4.822
+        },
+        {
+          "subject": "reminder:1",
+          "event": "fired",
+          "detail": "",
+          "t": 4.822
+        },
+        {
+          "subject": "outbox:1",
+          "event": "sent",
+          "detail": "",
+          "t": 6.663
+        }
+      ],
+      "jobs": [],
+      "outbox": [
+        {
+          "id": 1,
+          "idempotency_key": "reminder:1",
+          "status": "sent",
+          "sends": 1
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "title": "A slow queue has a backlog",
+      "did": "Queued four 3-second extraction jobs on a one-worker queue, then four short mail jobs.",
+      "expect": "Mail finishes straight away while extraction is still working through its backlog.",
+      "passed": true,
+      "observed": "4 mail jobs finished in 0.4s. At that moment the extract queue had 1 running and 3 waiting.",
+      "seconds": 14.47,
+      "events": [
+        {
+          "subject": "job:1",
+          "event": "accepted",
+          "detail": "extract sleep=3",
+          "t": 0.014
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "",
+          "t": 0.037
+        },
+        {
+          "subject": "job:1",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.042
+        },
+        {
+          "subject": "job:2",
+          "event": "accepted",
+          "detail": "extract sleep=3",
+          "t": 0.051
+        },
+        {
+          "subject": "job:2",
+          "event": "published",
+          "detail": "",
+          "t": 0.066
+        },
+        {
+          "subject": "job:3",
+          "event": "accepted",
+          "detail": "extract sleep=3",
+          "t": 0.079
+        },
+        {
+          "subject": "job:3",
+          "event": "published",
+          "detail": "",
+          "t": 0.094
+        },
+        {
+          "subject": "job:4",
+          "event": "accepted",
+          "detail": "extract sleep=3",
+          "t": 0.112
+        },
+        {
+          "subject": "job:4",
+          "event": "published",
+          "detail": "",
+          "t": 0.128
+        },
+        {
+          "subject": "job:5",
+          "event": "accepted",
+          "detail": "mail sleep=0.2",
+          "t": 0.142
+        },
+        {
+          "subject": "job:5",
+          "event": "published",
+          "detail": "",
+          "t": 0.158
+        },
+        {
+          "subject": "job:5",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.166
+        },
+        {
+          "subject": "job:6",
+          "event": "accepted",
+          "detail": "mail sleep=0.2",
+          "t": 0.174
+        },
+        {
+          "subject": "job:6",
+          "event": "published",
+          "detail": "",
+          "t": 0.191
+        },
+        {
+          "subject": "job:6",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.192
+        },
+        {
+          "subject": "job:7",
+          "event": "accepted",
+          "detail": "mail sleep=0.2",
+          "t": 0.209
+        },
+        {
+          "subject": "job:7",
+          "event": "published",
+          "detail": "",
+          "t": 0.228
+        },
+        {
+          "subject": "job:7",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.233
+        },
+        {
+          "subject": "job:8",
+          "event": "accepted",
+          "detail": "mail sleep=0.2",
+          "t": 0.246
+        },
+        {
+          "subject": "job:8",
+          "event": "published",
+          "detail": "",
+          "t": 0.263
+        },
+        {
+          "subject": "job:8",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.267
+        },
+        {
+          "subject": "job:5",
+          "event": "finished",
+          "detail": "",
+          "t": 0.39
+        },
+        {
+          "subject": "job:6",
+          "event": "finished",
+          "detail": "",
+          "t": 0.411
+        },
+        {
+          "subject": "job:7",
+          "event": "finished",
+          "detail": "",
+          "t": 0.45
+        },
+        {
+          "subject": "job:8",
+          "event": "finished",
+          "detail": "",
+          "t": 0.485
+        },
+        {
+          "subject": "job:1",
+          "event": "finished",
+          "detail": "",
+          "t": 3.064
+        },
+        {
+          "subject": "job:2",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 3.294
+        },
+        {
+          "subject": "job:2",
+          "event": "finished",
+          "detail": "",
+          "t": 6.33
+        },
+        {
+          "subject": "job:3",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 7.14
+        },
+        {
+          "subject": "job:3",
+          "event": "finished",
+          "detail": "",
+          "t": 10.169
+        },
+        {
+          "subject": "job:4",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 11.307
+        },
+        {
+          "subject": "job:4",
+          "event": "finished",
+          "detail": "",
+          "t": 14.329
+        }
+      ],
+      "jobs": [
+        {
+          "id": 1,
+          "kind": "extract",
+          "value": "sleep=3",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 2,
+          "kind": "extract",
+          "value": "sleep=3",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 3,
+          "kind": "extract",
+          "value": "sleep=3",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 4,
+          "kind": "extract",
+          "value": "sleep=3",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 5,
+          "kind": "mail",
+          "value": "sleep=0.2",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 6,
+          "kind": "mail",
+          "value": "sleep=0.2",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 7,
+          "kind": "mail",
+          "value": "sleep=0.2",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        },
+        {
+          "id": 8,
+          "kind": "mail",
+          "value": "sleep=0.2",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        }
+      ],
+      "outbox": []
+    },
+    {
+      "number": 5,
+      "title": "The same job is delivered four times",
+      "did": "Published one row id to the broker four times.",
+      "expect": "One delivery claims the row; the other three are skipped.",
+      "passed": true,
+      "observed": "4 deliveries of the same row id: 1 claimed it, 3 were skipped. attempts=1, finished=1.",
+      "seconds": 3.21,
+      "events": [
+        {
+          "subject": "job:1",
+          "event": "accepted",
+          "detail": "mail sleep=1",
+          "t": 0.013
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "",
+          "t": 0.035
+        },
+        {
+          "subject": "job:1",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.04
+        },
+        {
+          "subject": "job:1",
+          "event": "duplicate",
+          "detail": "delivery skipped: the row was not claimable",
+          "t": 0.073
+        },
+        {
+          "subject": "job:1",
+          "event": "duplicate",
+          "detail": "delivery skipped: the row was not claimable",
+          "t": 0.081
+        },
+        {
+          "subject": "job:1",
+          "event": "duplicate",
+          "detail": "delivery skipped: the row was not claimable",
+          "t": 0.085
+        },
+        {
+          "subject": "job:1",
+          "event": "finished",
+          "detail": "",
+          "t": 1.068
+        }
+      ],
+      "jobs": [
+        {
+          "id": 1,
+          "kind": "mail",
+          "value": "sleep=1",
+          "status": "done",
+          "attempts": 1,
+          "effects": 1,
+          "last_error": null
+        }
+      ],
+      "outbox": []
+    },
+    {
+      "number": 6,
+      "title": "A job keeps failing",
+      "did": "Queued a job that always raises, with the attempt limit set to 3.",
+      "expect": "It is retried with a growing wait, then set aside for a person to look at.",
+      "passed": true,
+      "observed": "Failed 3 times with a longer wait before each retry, then marked 'dead' with the error kept: RuntimeError: simulated failure.",
+      "seconds": 11.31,
+      "events": [
+        {
+          "subject": "job:1",
+          "event": "accepted",
+          "detail": "mail fail",
+          "t": 0.011
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "",
+          "t": 0.024
+        },
+        {
+          "subject": "job:1",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.029
+        },
+        {
+          "subject": "job:1",
+          "event": "retry",
+          "detail": "RuntimeError: simulated failure",
+          "t": 0.043
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "by the sweep",
+          "t": 5.135
+        },
+        {
+          "subject": "job:1",
+          "event": "claimed",
+          "detail": "attempt 2",
+          "t": 5.171
+        },
+        {
+          "subject": "job:1",
+          "event": "retry",
+          "detail": "RuntimeError: simulated failure",
+          "t": 5.193
+        },
+        {
+          "subject": "job:1",
+          "event": "published",
+          "detail": "by the sweep",
+          "t": 11.119
+        },
+        {
+          "subject": "job:1",
+          "event": "claimed",
+          "detail": "attempt 3",
+          "t": 11.136
+        },
+        {
+          "subject": "job:1",
+          "event": "dead",
+          "detail": "RuntimeError: simulated failure",
+          "t": 11.147
+        }
+      ],
+      "jobs": [
+        {
+          "id": 1,
+          "kind": "mail",
+          "value": "fail",
+          "status": "dead",
+          "attempts": 3,
+          "effects": 0,
+          "last_error": "RuntimeError: simulated failure"
+        }
+      ],
+      "outbox": []
+    }
+  ]
+}
