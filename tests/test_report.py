@@ -31,7 +31,7 @@ RESULTS = {
 
 def test_a_lane_is_cut_into_one_segment_per_state():
     (lane,) = report.lanes(CASE)
-    assert lane["label"] == "job 1 · mail"
+    assert lane["label"] == "job 1 (mail)"
     assert [(s["state"], s["start"], s["end"]) for s in lane["segments"]] == [
         ("queued", 0.0, 0.2), ("running", 0.2, 7.0), ("queued", 7.0, 7.5), ("running", 7.5, 9.0), ("done", 9.0, 10.0),
     ]
@@ -46,7 +46,7 @@ def test_build_writes_every_output_and_escapes_text(tmp_path):
     assert page == tmp_path / "README.md"
     assert sorted(p.name for p in results.iterdir()) == ["case-1.svg", "design.svg", "legend.svg", "results.json"]
     text = page.read_text()
-    assert "### 1. A &lt;worker&gt; is killed · ✅ Passed" in text and "<worker>" not in text
+    assert "### 1. A &lt;worker&gt; is killed: passed" in text and "<worker>" not in text
     assert "# 1 of 1" in text
     assert "![Timeline for case 1](results/case-1.svg)" in text
     assert "| 1.00s | chaos | chaos | worker killed |" in text

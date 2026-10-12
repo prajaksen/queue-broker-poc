@@ -16,7 +16,7 @@ STATE_LABEL = {
     "queued": "Waiting to run", "running": "Running", "waiting": "Waiting to retry",
     "done": "Done", "dead": "Set aside",
 }
-GLYPH = {"done": "✓", "dead": "✕"}
+WORD = {"done": "done", "dead": "set aside"}
 COLOR = {
     "surface": "#fcfcfb", "ink": "#0b0b0b", "ink2": "#52514e", "muted": "#898781", "grid": "#e1e0d9",
     "axis": "#c3c2b7", "queued": "#b4b2a9", "running": "#2a78d6", "waiting": "#fab219", "done": "#0ca30c",
@@ -33,7 +33,7 @@ CSS = (
     + "text{font:12px system-ui,-apple-system,'Segoe UI',sans-serif}"
 )
 
-WIDTH, LEFT, RIGHT, TOP, PITCH, BAR, AXIS = 760, 124, 18, 34, 24, 14, 30
+WIDTH, LEFT, RIGHT, TOP, PITCH, BAR, AXIS = 760, 124, 70, 34, 24, 14, 30
 
 
 def _svg(height: int, label: str, body: str) -> str:
@@ -47,7 +47,7 @@ def _svg(height: int, label: str, body: str) -> str:
 def _lane_label(subject: str, jobs: dict[int, dict[str, Any]]) -> str:
     kind, _, number = subject.partition(":")
     if kind == "job":
-        return f"job {number} · {jobs.get(int(number), {}).get('kind', '')}"
+        return f"job {number} ({jobs.get(int(number), {}).get('kind', '')})"
     return f"{kind} {number}"
 
 
@@ -107,18 +107,18 @@ def timeline_svg(case: dict[str, Any]) -> str:
             start = x(segment["start"])
             width = max(x(segment["end"]) - start - 2, 3)
             tip = (
-                f'{row["label"]} · {STATE_LABEL[segment["state"]]} · {segment["start"]:.1f}s to {segment["end"]:.1f}s'
-                + (f' · {segment["detail"]}' if segment["detail"] else "")
+                f'{row["label"]}, {STATE_LABEL[segment["state"]]}, {segment["start"]:.1f}s to {segment["end"]:.1f}s'
+                + (f', {segment["detail"]}' if segment["detail"] else "")
             )
             out.append(
                 f'<rect class="s-{segment["state"]}" x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" height="{BAR}" rx="3">'
                 f"<title>{escape(tip)}</title></rect>"
             )
-            glyph = GLYPH.get(segment["state"])
-            if glyph and width >= 18:
-                out.append(f'<text class="onbar" x="{start + 5:.1f}" y="{y + BAR - 3:.1f}" font-weight="700">{glyph}</text>')
-            elif glyph:
-                out.append(f'<text class="ink" x="{start + width + 4:.1f}" y="{y + BAR - 3:.1f}" font-weight="700">{glyph}</text>')
+            word = WORD.get(segment["state"])
+            if word and width >= len(word) * 7 + 12:
+                out.append(f'<text class="onbar" x="{start + 6:.1f}" y="{y + BAR - 3:.1f}" font-weight="600">{word}</text>')
+            elif word:
+                out.append(f'<text class="ink" x="{start + width + 5:.1f}" y="{y + BAR - 3:.1f}" font-weight="600">{word}</text>')
         last_ring = -100.0
         for point in row["points"]:
             px = x(point["t"])
@@ -155,7 +155,7 @@ def legend_svg() -> str:
     for state, name in STATE_LABEL.items():
         out.append(f'<rect class="s-{state}" x="{x:.0f}" y="{y:.0f}" width="18" height="12" rx="3"/>')
         x += 24
-        label(f"{name} {GLYPH[state]}" if state in GLYPH else name)
+        label(name)
     x, y = 16.0, 40.0
     out.append(f'<line class="tick" x1="{x + 4:.0f}" y1="{y - 2:.0f}" x2="{x + 4:.0f}" y2="{y + 14:.0f}" stroke-width="1.5"/>')
     x += 14
@@ -192,16 +192,16 @@ def design_svg() -> str:
         '<path class="head" d="M0 0 L10 5 L0 10 z"/></marker></defs>',
         box(16, 46, 100, 48, "Caller", "webhook, API"),
         box(150, 46, 130, 48, "Receiver", "answers 202"),
-        box(410, 24, 184, 92, "Postgres", "inbox · outbox · reminders", "the record of every job", strong=True),
+        box(410, 24, 184, 92, "Postgres", "inbox, outbox, reminders", "the record of every job", strong=True),
         box(410, 214, 164, 64, "Redis", "carries row ids only"),
         box(150, 222, 130, 48, "Celery beat", "one process"),
-        box(632, 196, 116, 100, "Celery workers", "mail ×4", "extract · browser", "outbox"),
+        box(632, 196, 116, 100, "Celery workers", "4 for mail", "extract, browser", "outbox"),
         arrow("M116 70 H148"),
-        arrow("M280 62 H408", "1 · insert row", 344, 52),
-        arrow("M268 94 L408 226", "2 · publish id", 318, 172, anchor="end"),
-        arrow("M280 252 H408", "sweep · reminders", 344, 272),
+        arrow("M280 62 H408", "1. insert row", 344, 52),
+        arrow("M268 94 L408 226", "2. publish id", 318, 172, anchor="end"),
+        arrow("M280 252 H408", "sweep, reminders", 344, 272),
         arrow("M574 246 H630", "deliver", 602, 236),
-        arrow("M690 196 V70 H596", "claim · work · finish", 604, 60, anchor="start"),
+        arrow("M690 196 V70 H596", "claim, work, finish", 604, 60, anchor="start"),
         arrow("M492 116 V212", "unfinished rows are", 502, 160, dashed=True, anchor="start"),
         '<text class="ink2" x="502" y="176">published again</text>',
     ])
@@ -223,7 +223,7 @@ def _case_section(case: dict[str, Any], images: str) -> list[str]:
         for event in case["events"]
     ]
     return [
-        f"### {case['number']}. {_cell(case['title'])} · {'✅ Passed' if case['passed'] else '❌ Failed'}",
+        f"### {case['number']}. {_cell(case['title'])}: {'passed' if case['passed'] else 'FAILED'}",
         "",
         "| | |",
         "| --- | --- |",
@@ -257,8 +257,8 @@ def readme(results: dict[str, Any], images: str = "results") -> str:
         "",
         "**failure cases behaved as designed**",
         "",
-        f"<sub>Run {_cell(env['ran_at'])} · {_cell(env['platform'])} · Python {_cell(env['python'])} · "
-        f"Celery {_cell(env['celery'])} ({_cell(env['pool'])} pool) · Redis {_cell(env['redis_server'])} · "
+        f"<sub>Run {_cell(env['ran_at'])}, {_cell(env['platform'])}, Python {_cell(env['python'])}, "
+        f"Celery {_cell(env['celery'])} ({_cell(env['pool'])} pool), Redis {_cell(env['redis_server'])}, "
         f"Postgres {_cell(env['postgres_server'])}</sub>",
         "",
         "## System design",

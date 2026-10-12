@@ -6,7 +6,7 @@ A job queue on Celery and Redis, with Postgres as the record. Each case below br
 
 **failure cases behaved as designed**
 
-<sub>Run 2026-10-12T20:29:33+00:00 · Darwin arm64 · Python 3.13.15 · Celery 5.6.3 (threads pool) · Redis 7.4.10 · Postgres 16.15</sub>
+<sub>Run 2026-10-12T20:29:33+00:00, Darwin arm64, Python 3.13.15, Celery 5.6.3 (threads pool), Redis 7.4.10, Postgres 16.15</sub>
 
 ## System design
 
@@ -28,7 +28,7 @@ One row per job. Time runs left to right from the start of the case. Timings for
 
 ![Legend](results/legend.svg)
 
-### 1. A worker is killed mid-job · ✅ Passed
+### 1. A worker is killed mid-job: passed
 
 | | |
 | --- | --- |
@@ -53,7 +53,7 @@ One row per job. Time runs left to right from the start of the case. Timings for
 
 </details>
 
-### 2. Redis is wiped with jobs queued · ✅ Passed
+### 2. Redis is wiped with jobs queued: passed
 
 | | |
 | --- | --- |
@@ -96,7 +96,7 @@ One row per job. Time runs left to right from the start of the case. Timings for
 
 </details>
 
-### 3. A timed reminder comes due · ✅ Passed
+### 3. A timed reminder comes due: passed
 
 | | |
 | --- | --- |
@@ -117,7 +117,7 @@ One row per job. Time runs left to right from the start of the case. Timings for
 
 </details>
 
-### 4. A slow queue has a backlog · ✅ Passed
+### 4. A slow queue has a backlog: passed
 
 | | |
 | --- | --- |
@@ -166,7 +166,7 @@ One row per job. Time runs left to right from the start of the case. Timings for
 
 </details>
 
-### 5. The same job is delivered four times · ✅ Passed
+### 5. The same job is delivered four times: passed
 
 | | |
 | --- | --- |
@@ -190,7 +190,7 @@ One row per job. Time runs left to right from the start of the case. Timings for
 
 </details>
 
-### 6. A job keeps failing · ✅ Passed
+### 6. A job keeps failing: passed
 
 | | |
 | --- | --- |
