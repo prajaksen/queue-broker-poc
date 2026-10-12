@@ -1,7 +1,3 @@
-"""Turns results/results.json into a self-contained HTML report, one SVG timeline per case and RESULTS.md.
-
-    uv run python -m queue_poc.report            # rebuild from the last run, no services needed
-"""
 from __future__ import annotations
 
 import json
@@ -11,7 +7,6 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-# What a subject's state becomes after each event. Events not listed here do not change the state.
 STATE_AFTER = {
     "accepted": "queued", "reminder_set": "queued", "outbox_added": "queued", "stale": "queued",
     "claimed": "running", "retry": "waiting", "dead": "dead",
@@ -21,29 +16,31 @@ STATE_LABEL = {
     "queued": "Waiting to run", "running": "Running", "waiting": "Waiting to retry",
     "done": "Done", "dead": "Set aside",
 }
-# Running is the one series colour; done / retry / set aside use the reserved status colours.
-LIGHT = {
+GLYPH = {"done": "✓", "dead": "✕"}
+COLOR = {
     "surface": "#fcfcfb", "ink": "#0b0b0b", "ink2": "#52514e", "muted": "#898781", "grid": "#e1e0d9",
     "axis": "#c3c2b7", "queued": "#b4b2a9", "running": "#2a78d6", "waiting": "#fab219", "done": "#0ca30c",
     "dead": "#d03b3b",
 }
-DARK = {
-    "surface": "#1a1a19", "ink": "#f0efec", "ink2": "#c3c2b7", "muted": "#898781", "grid": "#2c2c2a",
-    "axis": "#383835", "queued": "#6b6a65", "running": "#3987e5", "waiting": "#fab219", "done": "#0ca30c",
-    "dead": "#d03b3b",
-}
+CSS = (
+    f".bg{{fill:{COLOR['surface']}}}.ink{{fill:{COLOR['ink']}}}.ink2{{fill:{COLOR['ink2']}}}"
+    f".muted{{fill:{COLOR['muted']}}}.onbar{{fill:{COLOR['surface']}}}"
+    f".grid{{stroke:{COLOR['grid']}}}.axis{{stroke:{COLOR['axis']}}}.tick{{stroke:{COLOR['muted']}}}"
+    f".chaos{{stroke:{COLOR['ink']}}}.ring{{stroke:{COLOR['ink']}}}.wire{{stroke:{COLOR['ink2']}}}"
+    f".head{{fill:{COLOR['ink2']}}}.box{{fill:none;stroke:{COLOR['axis']};stroke-width:1.5}}"
+    f".strong{{stroke:{COLOR['running']};stroke-width:2}}"
+    + "".join(f".s-{state}{{fill:{COLOR[state]}}}" for state in STATE_LABEL)
+    + "text{font:12px system-ui,-apple-system,'Segoe UI',sans-serif}"
+)
 
-GLYPH = {"done": " ✓", "dead": " ✕"}
 WIDTH, LEFT, RIGHT, TOP, PITCH, BAR, AXIS = 760, 124, 18, 34, 24, 14, 30
 
 
-def _svg_css(palette: dict[str, str]) -> str:
+def _svg(height: int, label: str, body: str) -> str:
     return (
-        f".bg{{fill:{palette['surface']}}}.ink{{fill:{palette['ink']}}}.ink2{{fill:{palette['ink2']}}}"
-        f".muted{{fill:{palette['muted']}}}.grid{{stroke:{palette['grid']}}}.axis{{stroke:{palette['axis']}}}"
-        f".chaos{{stroke:{palette['ink']}}}.ring{{stroke:{palette['ink']}}}.tick{{stroke:{palette['muted']}}}.onbar{{fill:{palette['surface']}}}"
-        + "".join(f".s-{state}{{fill:{palette[state]}}}" for state in STATE_LABEL)
-        + "text{font:12px system-ui,-apple-system,'Segoe UI',sans-serif}"
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {height}" width="{WIDTH}" height="{height}" '
+        f'role="img" aria-label="{escape(label)}"><style>{CSS}</style>'
+        f'<rect class="bg" width="{WIDTH}" height="{height}" rx="8"/>{body}</svg>'
     )
 
 
@@ -61,9 +58,12 @@ def _axis_step(end: float) -> float:
     return 120
 
 
+def _end(case: dict[str, Any]) -> float:
+    return max([case["seconds"]] + [event["t"] for event in case["events"]]) or 1
+
+
 def lanes(case: dict[str, Any]) -> list[dict[str, Any]]:
-    """One lane per job, reminder or outbox row: its state segments and the instants worth marking."""
-    end = max([case["seconds"]] + [event["t"] for event in case["events"]]) or 1
+    end = _end(case)
     jobs = {job["id"]: job for job in case["jobs"]}
     found: dict[str, dict[str, Any]] = {}
     for event in case["events"]:
@@ -83,26 +83,18 @@ def lanes(case: dict[str, Any]) -> list[dict[str, Any]]:
     return list(found.values())
 
 
-def timeline_svg(case: dict[str, Any], *, standalone: bool) -> str:
+def timeline_svg(case: dict[str, Any]) -> str:
     rows = lanes(case)
-    end = max([case["seconds"]] + [event["t"] for event in case["events"]]) or 1
-    step = _axis_step(end)
-    span = math.ceil(end / step) * step
+    step = _axis_step(_end(case))
+    span = math.ceil(_end(case) / step) * step
     plot = WIDTH - LEFT - RIGHT
-    height = TOP + len(rows) * PITCH + AXIS
+    bottom = TOP + len(rows) * PITCH
 
     def x(t: float) -> float:
         return LEFT + plot * t / span
 
-    out = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {height}" width="{WIDTH}" height="{height}" '
-        f'role="img" aria-label="Timeline for case {case["number"]}: {escape(case["title"])}">'
-    ]
-    if standalone:
-        out.append(f"<style>{_svg_css(LIGHT)}</style><rect class='bg' width='{WIDTH}' height='{height}' rx='8'/>")
-    bottom = TOP + len(rows) * PITCH
-    ticks = int(round(span / step))
-    for index in range(ticks + 1):
+    out = []
+    for index in range(int(round(span / step)) + 1):
         t = index * step
         out.append(f'<line class="grid" x1="{x(t):.1f}" y1="{TOP - 6}" x2="{x(t):.1f}" y2="{bottom}" stroke-width="1"/>')
         out.append(f'<text class="muted" x="{x(t):.1f}" y="{bottom + 16}" text-anchor="middle">{t:g}s</text>')
@@ -112,8 +104,8 @@ def timeline_svg(case: dict[str, Any], *, standalone: bool) -> str:
         y = TOP + index * PITCH + (PITCH - BAR) / 2
         out.append(f'<text class="ink2" x="{LEFT - 10}" y="{y + BAR - 3}" text-anchor="end">{escape(row["label"])}</text>')
         for segment in row["segments"]:
-            start, stop = x(segment["start"]), x(segment["end"])
-            width = max(stop - start - 2, 3)
+            start = x(segment["start"])
+            width = max(x(segment["end"]) - start - 2, 3)
             tip = (
                 f'{row["label"]} · {STATE_LABEL[segment["state"]]} · {segment["start"]:.1f}s to {segment["end"]:.1f}s'
                 + (f' · {segment["detail"]}' if segment["detail"] else "")
@@ -122,27 +114,21 @@ def timeline_svg(case: dict[str, Any], *, standalone: bool) -> str:
                 f'<rect class="s-{segment["state"]}" x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" height="{BAR}" rx="3">'
                 f"<title>{escape(tip)}</title></rect>"
             )
-            # Done and set aside differ by a glyph as well as by colour.
-            glyph = {"done": "✓", "dead": "✕"}.get(segment["state"])
+            glyph = GLYPH.get(segment["state"])
             if glyph and width >= 18:
-                out.append(f'<text class="onbar" x="{start + 5:.1f}" y="{y + BAR - 3:.1f}" font-weight="700" pointer-events="none">{glyph}</text>')
+                out.append(f'<text class="onbar" x="{start + 5:.1f}" y="{y + BAR - 3:.1f}" font-weight="700">{glyph}</text>')
             elif glyph:
                 out.append(f'<text class="ink" x="{start + width + 4:.1f}" y="{y + BAR - 3:.1f}" font-weight="700">{glyph}</text>')
-        last_cross = -100.0
+        last_ring = -100.0
         for point in row["points"]:
             px = x(point["t"])
             if point["kind"] == "duplicate":
-                px = max(px, last_cross + 10)
-                last_cross = px
-                out.append(
-                    f'<circle class="ring" cx="{px:.1f}" cy="{y - 5:.1f}" r="3.5" fill="none" stroke-width="1.5">'
-                    f'<title>{escape(row["label"])} · duplicate delivery skipped at {point["t"]:.1f}s</title></circle>'
-                )
+                px = max(px, last_ring + 10)
+                last_ring = px
+                out.append(f'<circle class="ring" cx="{px:.1f}" cy="{y - 5:.1f}" r="3.5" fill="none" stroke-width="1.5"/>')
             elif point["kind"] == "published":
                 out.append(
-                    f'<line class="tick" x1="{px:.1f}" y1="{y - 4:.1f}" x2="{px:.1f}" y2="{y + BAR + 4:.1f}" stroke-width="1.5">'
-                    f'<title>{escape(row["label"])} · row id published to Redis at {point["t"]:.1f}s'
-                    f'{" " + escape(point["detail"]) if point["detail"] else ""}</title></line>'
+                    f'<line class="tick" x1="{px:.1f}" y1="{y - 4:.1f}" x2="{px:.1f}" y2="{y + BAR + 4:.1f}" stroke-width="1.5"/>'
                 )
 
     for event in case["events"]:
@@ -155,12 +141,37 @@ def timeline_svg(case: dict[str, Any], *, standalone: bool) -> str:
             f'<text class="ink" x="{cx + dx:.1f}" y="{TOP - 12}" text-anchor="{anchor}" font-weight="600">'
             f'{escape(event["detail"])} at {event["t"]:.1f}s</text>'
         )
-    out.append("</svg>")
-    return "".join(out)
+    return _svg(bottom + AXIS, f'Timeline for case {case["number"]}: {case["title"]}', "".join(out))
 
 
-def design_svg(*, standalone: bool) -> str:
-    """The system on one picture: Postgres holds the record, Redis only carries row ids."""
+def legend_svg() -> str:
+    out, x, y = [], 16.0, 14.0
+
+    def label(text: str) -> None:
+        nonlocal x
+        out.append(f'<text class="ink2" x="{x:.0f}" y="{y + 10:.0f}">{escape(text)}</text>')
+        x += len(text) * 6.4 + 22
+
+    for state, name in STATE_LABEL.items():
+        out.append(f'<rect class="s-{state}" x="{x:.0f}" y="{y:.0f}" width="18" height="12" rx="3"/>')
+        x += 24
+        label(f"{name} {GLYPH[state]}" if state in GLYPH else name)
+    x, y = 16.0, 40.0
+    out.append(f'<line class="tick" x1="{x + 4:.0f}" y1="{y - 2:.0f}" x2="{x + 4:.0f}" y2="{y + 14:.0f}" stroke-width="1.5"/>')
+    x += 14
+    label("Row id published to Redis")
+    out.append(f'<circle class="ring" cx="{x + 4:.0f}" cy="{y + 6:.0f}" r="3.5" fill="none" stroke-width="1.5"/>')
+    x += 14
+    label("Duplicate delivery skipped")
+    out.append(
+        f'<line class="chaos" x1="{x + 4:.0f}" y1="{y - 2:.0f}" x2="{x + 4:.0f}" y2="{y + 14:.0f}" stroke-width="1.5" stroke-dasharray="4 3"/>'
+    )
+    x += 14
+    label("Fault injected")
+    return _svg(66, "Legend for the timelines", "".join(out))
+
+
+def design_svg() -> str:
     def box(x: int, y: int, w: int, h: int, title: str, *lines: str, strong: bool = False) -> str:
         parts = [f'<rect class="{"box strong" if strong else "box"}" x="{x}" y="{y}" width="{w}" height="{h}" rx="8"/>']
         first = y + (h - 16 * len(lines)) / 2 + 3
@@ -169,40 +180,23 @@ def design_svg(*, standalone: bool) -> str:
             parts.append(f'<text class="ink2" x="{x + w / 2}" y="{first + 16 * offset:.0f}" text-anchor="middle">{line}</text>')
         return "".join(parts)
 
-    def arrow(path: str, label: str, lx: int, ly: int, *, dashed: bool = False, anchor: str = "middle") -> str:
+    def arrow(path: str, label: str = "", lx: int = 0, ly: int = 0, *, dashed: bool = False, anchor: str = "middle") -> str:
         dash = ' stroke-dasharray="5 4"' if dashed else ""
         return (
             f'<path class="wire" d="{path}" fill="none" stroke-width="1.5" marker-end="url(#head)"{dash}/>'
             f'<text class="ink2" x="{lx}" y="{ly}" text-anchor="{anchor}">{label}</text>'
         )
 
-    width, height = 760, 330
-    css = (
-        ".box{fill:none;stroke-width:1.5}text{font:12px system-ui,-apple-system,'Segoe UI',sans-serif}"
-        if not standalone else
-        f".bg{{fill:{LIGHT['surface']}}}.ink{{fill:{LIGHT['ink']}}}.ink2{{fill:{LIGHT['ink2']}}}"
-        f".box{{fill:none;stroke:{LIGHT['axis']};stroke-width:1.5}}.strong{{stroke:{LIGHT['running']};stroke-width:2}}"
-        f".wire{{stroke:{LIGHT['ink2']}}}.head{{fill:{LIGHT['ink2']}}}"
-        "text{font:12px system-ui,-apple-system,'Segoe UI',sans-serif}"
-    )
-    parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
-        'role="img" aria-label="System design: a receiver stores each job in Postgres and publishes its id to Redis; '
-        'Celery workers claim and finish the row in Postgres; Celery beat sweeps Postgres and re-publishes unfinished rows">',
-        f"<style>{css}</style>",
+    body = "".join([
         '<defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
         '<path class="head" d="M0 0 L10 5 L0 10 z"/></marker></defs>',
-    ]
-    if standalone:
-        parts.append(f"<rect class='bg' width='{width}' height='{height}' rx='8'/>")
-    parts += [
         box(16, 46, 100, 48, "Caller", "webhook, API"),
         box(150, 46, 130, 48, "Receiver", "answers 202"),
         box(410, 24, 184, 92, "Postgres", "inbox · outbox · reminders", "the record of every job", strong=True),
         box(410, 214, 164, 64, "Redis", "carries row ids only"),
         box(150, 222, 130, 48, "Celery beat", "one process"),
         box(632, 196, 116, 100, "Celery workers", "mail ×4", "extract · browser", "outbox"),
-        arrow("M116 70 H148", "", 0, 0),
+        arrow("M116 70 H148"),
         arrow("M280 62 H408", "1 · insert row", 344, 52),
         arrow("M268 94 L408 226", "2 · publish id", 318, 172, anchor="end"),
         arrow("M280 252 H408", "sweep · reminders", 344, 272),
@@ -210,188 +204,154 @@ def design_svg(*, standalone: bool) -> str:
         arrow("M690 196 V70 H596", "claim · work · finish", 604, 60, anchor="start"),
         arrow("M492 116 V212", "unfinished rows are", 502, 160, dashed=True, anchor="start"),
         '<text class="ink2" x="502" y="176">published again</text>',
-    ]
-    parts.append("</svg>")
-    return "".join(parts)
-
-
-def _legend() -> str:
-    items = "".join(
-        f'<span class="key"><svg width="18" height="12" aria-hidden="true"><rect class="s-{state}" width="18" height="12" rx="3"/></svg>{label}{GLYPH.get(state, "")}</span>'
-        for state, label in STATE_LABEL.items()
-    )
-    return (
-        f'<div class="legend">{items}'
-        '<span class="key"><svg width="10" height="16" aria-hidden="true"><line class="tick" x1="5" y1="0" x2="5" y2="16" stroke-width="1.5"/></svg>Row id published to Redis</span>'
-        '<span class="key"><svg width="10" height="10" aria-hidden="true"><circle class="ring" cx="5" cy="5" r="3.5" fill="none" stroke-width="1.5"/></svg>Duplicate delivery skipped</span>'
-        '<span class="key"><svg width="10" height="16" aria-hidden="true"><line class="chaos" x1="5" y1="0" x2="5" y2="16" stroke-width="1.5" stroke-dasharray="4 3"/></svg>Fault injected</span></div>'
+    ])
+    return _svg(
+        330,
+        "System design: a receiver stores each job in Postgres and publishes its id to Redis; Celery workers claim "
+        "and finish the row in Postgres; Celery beat sweeps Postgres and publishes unfinished rows again",
+        body,
     )
 
 
-def _events_table(case: dict[str, Any]) -> str:
-    rows = "".join(
-        f"<tr><td class='num'>{event['t']:.2f}s</td><td>{escape(event['subject'])}</td>"
-        f"<td>{escape(event['event'])}</td><td>{escape(event['detail'])}</td></tr>"
+def _cell(text: Any) -> str:
+    return escape(str(text)).replace("|", "\\|").replace("\n", " ")
+
+
+def _case_section(case: dict[str, Any], images: str) -> list[str]:
+    events = [
+        f"| {event['t']:.2f}s | {_cell(event['subject'])} | {_cell(event['event'])} | {_cell(event['detail'])} |"
         for event in case["events"]
-    )
-    return (
-        f"<details><summary>All {len(case['events'])} events as a table</summary>"
-        "<div class='scroll'><table><thead><tr><th>Time</th><th>Subject</th><th>Event</th><th>Detail</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table></div></details>"
-    )
+    ]
+    return [
+        f"### {case['number']}. {_cell(case['title'])} · {'✅ Passed' if case['passed'] else '❌ Failed'}",
+        "",
+        "| | |",
+        "| --- | --- |",
+        f"| **What we did** | {_cell(case['did'])} |",
+        f"| **Expected** | {_cell(case['expect'])} |",
+        f"| **Observed** | {_cell(case['observed'])} |",
+        "",
+        f"![Timeline for case {case['number']}]({images}/case-{case['number']}.svg)",
+        "",
+        f"<details><summary>All {len(events)} events as a table</summary>",
+        "",
+        "| Time | Subject | Event | Detail |",
+        "| --- | --- | --- | --- |",
+        *events,
+        "",
+        "</details>",
+        "",
+    ]
 
 
-def _page_css() -> str:
-    def tokens(palette: dict[str, str], page: str, card: str) -> str:
-        return (
-            f"--page:{page};--card:{card};--ink:{palette['ink']};--ink2:{palette['ink2']};--muted:{palette['muted']};"
-            f"--grid:{palette['grid']};--axis:{palette['axis']};"
-            + "".join(f"--{state}:{palette[state]};" for state in STATE_LABEL)
-        )
-
-    light, dark = tokens(LIGHT, "#f9f9f7", LIGHT["surface"]), tokens(DARK, "#0d0d0d", DARK["surface"])
-    return f"""
-:root{{{light}}}
-@media (prefers-color-scheme: dark){{:root:not([data-theme="light"]){{{dark}}}}}
-:root[data-theme="dark"]{{{dark}}}
-*{{box-sizing:border-box}}
-body{{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}}
-main{{max-width:860px;margin:0 auto;padding:32px 16px 64px}}
-h1{{font-size:26px;line-height:1.2;margin:0 0 6px}}
-h2{{font-size:18px;margin:40px 0 12px}}
-h3{{font-size:16px;margin:0}}
-p{{margin:0 0 10px}}
-.sub,.meta{{color:var(--ink2)}}
-.meta{{font-size:13px}}
-.verdict{{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;margin:20px 0 4px}}
-.verdict strong{{font-size:40px;line-height:1}}
-.card{{background:var(--card);border:1px solid var(--grid);border-radius:10px;padding:18px;margin:0 0 16px}}
-.head{{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}}
-.badge{{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;border:1.5px solid;white-space:nowrap}}
-.badge.pass{{border-color:var(--done)}}.badge.fail{{border-color:var(--dead)}}
-dl{{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0 0 12px}}
-dt{{color:var(--muted)}}dd{{margin:0}}
-.scroll{{overflow-x:auto}}
-.scroll svg{{display:block;min-width:640px;width:100%;height:auto}}
-svg text{{font:12px system-ui,-apple-system,"Segoe UI",sans-serif}}
-.ink{{fill:var(--ink)}}.ink2{{fill:var(--ink2)}}.muted{{fill:var(--muted)}}
-.grid{{stroke:var(--grid)}}.axis{{stroke:var(--axis)}}.chaos{{stroke:var(--ink)}}.ring{{stroke:var(--ink)}}.tick{{stroke:var(--muted)}}.onbar{{fill:var(--card)}}
-.box{{stroke:var(--axis)}}.box.strong{{stroke:var(--running);stroke-width:2}}.wire{{stroke:var(--ink2)}}.head-fill,.head{{fill:var(--ink2)}}
-.s-queued{{fill:var(--queued)}}.s-running{{fill:var(--running)}}.s-waiting{{fill:var(--waiting)}}.s-done{{fill:var(--done)}}.s-dead{{fill:var(--dead)}}
-.legend{{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink2);margin:0 0 16px}}
-.key{{display:inline-flex;gap:6px;align-items:center}}
-details{{margin-top:12px;font-size:13px}}summary{{cursor:pointer;color:var(--ink2)}}
-table{{border-collapse:collapse;width:100%;margin-top:8px}}
-th,td{{text-align:left;padding:4px 10px 4px 0;border-bottom:1px solid var(--grid);vertical-align:top}}
-th{{color:var(--muted);font-weight:500}}.num{{font-variant-numeric:tabular-nums;white-space:nowrap}}
-ol{{margin:0;padding-left:20px}}li{{margin-bottom:6px}}
-code{{font:13px ui-monospace,SFMono-Regular,Menlo,monospace}}
-"""
-
-
-def html_report(results: dict[str, Any]) -> str:
-    env, cases = results["environment"], results["cases"]
-    passed = sum(1 for case in cases if case["passed"])
-    cards = []
-    for case in cases:
-        badge = ("pass", "✓ Passed") if case["passed"] else ("fail", "✕ Failed")
-        cards.append(
-            f'<section class="card"><div class="head"><h3>{case["number"]}. {escape(case["title"])}</h3>'
-            f'<span class="badge {badge[0]}">{badge[1]}</span></div>'
-            f'<dl><dt>What we did</dt><dd>{escape(case["did"])}</dd>'
-            f'<dt>Expected</dt><dd>{escape(case["expect"])}</dd>'
-            f'<dt>Observed</dt><dd>{escape(case["observed"])}</dd></dl>'
-            f'<div class="scroll">{timeline_svg(case, standalone=False)}</div>{_events_table(case)}</section>'
-        )
-    settings = env["settings"]
-    return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Queue POC results</title><style>{_page_css()}</style></head><body><main>
-<h1>Queue POC: does anything get lost?</h1>
-<p class="sub">A job queue on Celery and Redis, with Postgres as the record. Each case below breaks something on purpose and shows what happened to the jobs.</p>
-<div class="verdict"><strong>{passed} of {len(cases)}</strong><span>failure cases behaved as designed</span></div>
-<p class="meta">Run {escape(env["ran_at"])} · {escape(env["platform"])} · Python {escape(env["python"])} · Celery {escape(env["celery"])} ({escape(env["pool"])} pool) · Redis {escape(env["redis_server"])} · Postgres {escape(env["postgres_server"])}</p>
-
-<h2>System design</h2>
-<div class="card"><div class="scroll">{design_svg(standalone=False)}</div>
-<ol>
-<li><b>A job is accepted when its row is committed in Postgres.</b> Publishing to Redis comes second and is allowed to fail.</li>
-<li><b>Redis carries only the row id.</b> If Redis loses a message, the row is still there.</li>
-<li><b>A worker claims the row before working</b>, so a second delivery of the same id is skipped.</li>
-<li><b>A sweep runs every few seconds</b> and publishes again any row that is unfinished: never published, lost by Redis, or held by a worker that died.</li>
-<li><b>Timed work is a row with a due time.</b> Nothing waits inside Redis.</li>
-</ol></div>
-
-<h2>What happened in each case</h2>
-<p class="meta">One row per job. Time runs left to right from the start of the case. Hover a bar for details. Timings for this run were shortened: a running job counts as abandoned after {settings["stale_seconds"]}s, a queued row is published again after {settings["republish_seconds"]}s, and the sweep runs every {settings["sweep_seconds"]:g}s.</p>
-{_legend()}
-{"".join(cards)}
-
-<h2>What this run does not show</h2>
-<div class="card"><ol>
-<li>Workers did placeholder work (a sleep, or a raised error). "Finished once" is proven for the database row; a real call to another system still needs its own idempotency key.</li>
-<li>This run used Celery's <b>{escape(env["pool"])}</b> pool on {escape(env["platform"])}. Linux containers use the prefork pool; rerun there before relying on these results.</li>
-<li>One Redis with no persistence and no failover. Two beat processes running at once was not tested.</li>
-</ol></div>
-<p class="meta">Rebuild this page from <code>results/results.json</code> with <code>uv run python -m queue_poc.report</code>, or rerun everything with <code>uv run python -m queue_poc.prove</code>.</p>
-</main></body></html>
-"""
-
-
-def markdown_results(results: dict[str, Any]) -> str:
-    env, cases = results["environment"], results["cases"]
+def readme(results: dict[str, Any], images: str = "results") -> str:
+    env, cases, settings = results["environment"], results["cases"], results["environment"]["settings"]
     passed = sum(1 for case in cases if case["passed"])
     lines = [
-        "# Results",
+        "# Queue POC: does anything get lost?",
         "",
-        f"**{passed} of {len(cases)} failure cases behaved as designed.**",
+        "A job queue on Celery and Redis, with Postgres as the record. Each case below breaks something on purpose "
+        "and shows what happened to the jobs.",
         "",
-        f"Run {env['ran_at']} on {env['platform']}, Python {env['python']}, Celery {env['celery']} "
-        f"({env['pool']} pool), Redis {env['redis_server']}, Postgres {env['postgres_server']}.",
+        f"# {passed} of {len(cases)}",
         "",
-        "This file is written by `python -m queue_poc.prove`. Open `report.html` in a browser for the same results "
-        "with hover details and the full event tables.",
+        "**failure cases behaved as designed**",
         "",
-        "| # | Case | Result | What was observed |",
-        "| --- | --- | --- | --- |",
-    ]
-    lines += [
-        f"| {case['number']} | {case['title']} | {'Passed' if case['passed'] else '**Failed**'} | {case['observed']} |"
-        for case in cases
-    ]
-    lines += [
+        f"<sub>Run {_cell(env['ran_at'])} · {_cell(env['platform'])} · Python {_cell(env['python'])} · "
+        f"Celery {_cell(env['celery'])} ({_cell(env['pool'])} pool) · Redis {_cell(env['redis_server'])} · "
+        f"Postgres {_cell(env['postgres_server'])}</sub>",
         "",
-        "## Timelines",
+        "## System design",
         "",
-        "One row per job, time left to right. Grey is waiting to run, blue is running, green is done, "
-        "yellow is waiting to retry, red is set aside (done also carries a ✓, set aside a ✕). A thin tick is the "
-        "row id being published to Redis, a small ring is a duplicate delivery that was skipped, and a dashed "
-        "line is the fault being injected.",
+        f"![System design]({images}/design.svg)",
+        "",
+        "1. **A job is accepted when its row is committed in Postgres.** Publishing to Redis comes second and is allowed to fail.",
+        "2. **Redis carries only the row id.** If Redis loses a message, the row is still there.",
+        "3. **A worker claims the row before working**, so a second delivery of the same id is skipped.",
+        "4. **A sweep runs every few seconds** and publishes again any row that is unfinished: never published, "
+        "lost by Redis, or held by a worker that died.",
+        "5. **Timed work is a row with a due time.** Nothing waits inside Redis.",
+        "",
+        "## The life of one job",
+        "",
+        "![Job life cycle: queued, running, done or dead](docs/job-lifecycle.png)",
+        "",
+        "## What happened in each case",
+        "",
+        "One row per job. Time runs left to right from the start of the case. Timings for this run were shortened: "
+        f"a running job counts as abandoned after {settings['stale_seconds']}s, a queued row is published again after "
+        f"{settings['republish_seconds']}s, and the sweep runs every {settings['sweep_seconds']:g}s.",
+        "",
+        f"![Legend]({images}/legend.svg)",
         "",
     ]
     for case in cases:
-        lines += [
-            f"### {case['number']}. {case['title']}",
-            "",
-            f"- **What we did:** {case['did']}",
-            f"- **Expected:** {case['expect']}",
-            f"- **Observed:** {case['observed']}",
-            "",
-            f"![Timeline for case {case['number']}](case-{case['number']}.svg)",
-            "",
-        ]
+        lines += _case_section(case, images)
+    lines += [
+        "## What this run does not show",
+        "",
+        "1. Workers did placeholder work (a sleep, or a raised error). \"Finished once\" is proven for the database row; "
+        "a real call to another system still needs its own idempotency key.",
+        f"2. This run used Celery's **{_cell(env['pool'])}** pool on {_cell(env['platform'])}. Linux containers use the "
+        "prefork pool; rerun there before relying on these results.",
+        "3. One Redis with no persistence and no failover. Two beat processes running at once was not tested.",
+        "",
+        "## Run it",
+        "",
+        "Needs Docker and [uv](https://docs.astral.sh/uv/).",
+        "",
+        "```bash",
+        "docker compose up -d --wait          # Postgres on 55432, Redis on 56379, both in memory",
+        "uv run python -m queue_poc.prove     # about 90 seconds; rewrites this README and results/",
+        "uv run pytest",
+        "docker compose down",
+        "```",
+        "",
+        "To rebuild this page from the last run without any services: `uv run python -m queue_poc.report`.",
+        "",
+        "## Worker rules",
+        "",
+        "| Rule | Where |",
+        "| --- | --- |",
+        "| Acknowledge after the work, never before | `task_acks_late`, `task_reject_on_worker_lost` in `tasks.py` |",
+        "| Take one job at a time | `worker_prefetch_multiplier = 1` |",
+        "| Claim the row before working; skip if it cannot be claimed | `db.claim` |",
+        "| Finish and fail only your own attempt | `db.finish` and `db.fail` match on the attempt number |",
+        "| One queue per kind of work | `QUEUE_FOR_KIND` in `config.py` |",
+        "| A running row older than the limit is abandoned and queued again | `db.reset_stale`, `QUEUE_POC_STALE_SECONDS` |",
+        "| The limit is longer than the longest job | Set per deployment; also the job's hard time limit |",
+        "| Timed work is a due time in Postgres, read by beat | `reminders` table, `db.fire_due_reminders` |",
+        "| A send is a row with a unique key, written with its cause | `outbox` table |",
+        "| Exactly one beat process | Deployment |",
+        "",
+        "## Layout",
+        "",
+        "```",
+        "src/queue_poc/",
+        "  config.py     connection strings, limits, queue names",
+        "  db.py         Postgres: inbox, outbox, reminders, and the event log this page is drawn from",
+        "  tasks.py      Celery app and settings, the job task, sweep, reminders, outbox send",
+        "  receiver.py   accept-then-publish HTTP endpoint",
+        "  prove.py      the six failure cases, run for real",
+        "  report.py     results.json to this README and the SVG images",
+        "tests/          database rules and report building",
+        "results/        raw data and images from the latest run",
+        "docs/           the job life-cycle picture",
+        "```",
+        "",
+    ]
     return "\n".join(lines)
 
 
-def build(directory: Path) -> Path:
+def build(directory: Path, readme_path: Path | None = None) -> Path:
     results = json.loads((directory / "results.json").read_text(encoding="utf-8"))
-    (directory / "design.svg").write_text(design_svg(standalone=True), encoding="utf-8")
+    (directory / "design.svg").write_text(design_svg(), encoding="utf-8")
+    (directory / "legend.svg").write_text(legend_svg(), encoding="utf-8")
     for case in results["cases"]:
-        (directory / f"case-{case['number']}.svg").write_text(timeline_svg(case, standalone=True), encoding="utf-8")
-    (directory / "RESULTS.md").write_text(markdown_results(results), encoding="utf-8")
-    page = directory / "report.html"
-    page.write_text(html_report(results), encoding="utf-8")
-    return page
+        (directory / f"case-{case['number']}.svg").write_text(timeline_svg(case), encoding="utf-8")
+    readme_path = readme_path or directory.parent / "README.md"
+    readme_path.write_text(readme(results, images=directory.name), encoding="utf-8")
+    return readme_path
 
 
 if __name__ == "__main__":

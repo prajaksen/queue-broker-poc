@@ -1,10 +1,12 @@
-# Queue broker POC · Celery, Redis and Postgres
+# Queue POC: does anything get lost?
 
-A small, self-contained proof of one question: **how do we queue background work so that nothing accepted is ever lost?**
+A job queue on Celery and Redis, with Postgres as the record. Each case below breaks something on purpose and shows what happened to the jobs.
 
-The answer it tests: **Postgres holds the record of every job, and Redis only carries row ids.** Celery on Redis does the dispatching. If Redis loses a message or a worker dies, the row is still in Postgres and a sweep puts it back on the queue.
+# 6 of 6
 
-**Status: POC. Six failure cases run against real Postgres, Redis and Celery, all passing on a laptop. Not yet run on Linux.**
+**failure cases behaved as designed**
+
+<sub>Run 2026-10-12T20:29:33+00:00 · Darwin arm64 · Python 3.13.15 · Celery 5.6.3 (threads pool) · Redis 7.4.10 · Postgres 16.15</sub>
 
 ## System design
 
@@ -16,42 +18,210 @@ The answer it tests: **Postgres holds the record of every job, and Redis only ca
 4. **A sweep runs every few seconds** and publishes again any row that is unfinished: never published, lost by Redis, or held by a worker that died.
 5. **Timed work is a row with a due time.** Nothing waits inside Redis.
 
-The life of one job:
+## The life of one job
 
-```mermaid
-stateDiagram-v2
-    [*] --> queued: receiver commits the row
-    queued --> running: a worker claims it
-    running --> done: work finished
-    running --> queued: work failed, wait and retry
-    running --> queued: worker died, sweep notices
-    running --> dead: failed on the last attempt
-    done --> [*]
-    dead --> [*]: a person looks at it
-```
+![Job life cycle: queued, running, done or dead](docs/job-lifecycle.png)
 
-## Results
+## What happened in each case
 
-Latest run: **6 of 6 passed**. Full write-up with a timeline per case: [`results/RESULTS.md`](results/RESULTS.md). The same results as a page with hover details: open `results/report.html` in a browser.
+One row per job. Time runs left to right from the start of the case. Timings for this run were shortened: a running job counts as abandoned after 6s, a queued row is published again after 4s, and the sweep runs every 2s.
 
-| # | What was broken on purpose | What happened |
-| --- | --- | --- |
-| 1 | A worker was killed (`SIGKILL`) mid-job | The job ran again on another worker and finished once |
-| 2 | Redis was wiped with five jobs queued | All five still finished; the sweep published them again from Postgres |
-| 3 | A reminder came due, and was fired twice | It was sent once; a second row with the same key was refused |
-| 4 | A slow queue had a backlog | Four mail jobs finished in under half a second while extraction was still waiting |
-| 5 | One job was delivered four times | One delivery ran it; three were skipped |
-| 6 | A job failed every time | Retried with a growing wait, then set aside with its error kept |
+![Legend](results/legend.svg)
 
-Case 1, as the report draws it. Blue is running, the dashed line is the kill, and the second blue bar is the retry:
+### 1. A worker is killed mid-job · ✅ Passed
+
+| | |
+| --- | --- |
+| **What we did** | Started a 3-second job, then sent SIGKILL to the worker while it was running. |
+| **Expected** | The job runs again on another worker and finishes exactly once. |
+| **Observed** | Row stayed &#x27;running&#x27; after the kill. The sweep queued it again and a second worker finished it 10s later. attempts=2, finished=1. |
 
 ![Timeline for case 1](results/case-1.svg)
 
-Case 4, where the mail jobs (bottom four rows) are done almost at once while the extraction jobs wait their turn:
+<details><summary>All 8 events as a table</summary>
+
+| Time | Subject | Event | Detail |
+| --- | --- | --- | --- |
+| 0.01s | job:1 | accepted | mail sleep=3 |
+| 0.04s | job:1 | published |  |
+| 0.04s | job:1 | claimed | attempt 1 |
+| 1.07s | chaos | chaos | worker killed |
+| 7.89s | job:1 | stale | worker stopped mid-job |
+| 7.90s | job:1 | published | by the sweep |
+| 7.92s | job:1 | claimed | attempt 2 |
+| 10.93s | job:1 | finished |  |
+
+</details>
+
+### 2. Redis is wiped with jobs queued · ✅ Passed
+
+| | |
+| --- | --- |
+| **What we did** | Queued five jobs with no worker running, then deleted everything in Redis. |
+| **Expected** | All five jobs still finish, because their rows are in Postgres. |
+| **Observed** | Redis held 5 messages, then 0 after the wipe. The sweep published all 5 again from Postgres; each finished once (5 finishes). |
+
+![Timeline for case 2](results/case-2.svg)
+
+<details><summary>All 26 events as a table</summary>
+
+| Time | Subject | Event | Detail |
+| --- | --- | --- | --- |
+| 0.03s | job:1 | accepted | mail sleep=0.1 |
+| 0.08s | job:1 | published |  |
+| 0.11s | job:2 | accepted | mail sleep=0.1 |
+| 0.14s | job:2 | published |  |
+| 0.18s | job:3 | accepted | mail sleep=0.1 |
+| 0.21s | job:3 | published |  |
+| 0.25s | job:4 | accepted | mail sleep=0.1 |
+| 0.28s | job:4 | published |  |
+| 0.31s | job:5 | accepted | mail sleep=0.1 |
+| 0.34s | job:5 | published |  |
+| 1.38s | chaos | chaos | Redis wiped |
+| 4.56s | job:1 | published | by the sweep |
+| 4.56s | job:3 | published | by the sweep |
+| 4.56s | job:5 | published | by the sweep |
+| 4.56s | job:4 | published | by the sweep |
+| 4.56s | job:2 | published | by the sweep |
+| 4.65s | job:2 | claimed | attempt 1 |
+| 4.65s | job:1 | claimed | attempt 1 |
+| 4.65s | job:3 | claimed | attempt 1 |
+| 4.66s | job:4 | claimed | attempt 1 |
+| 4.77s | job:2 | finished |  |
+| 4.77s | job:3 | finished |  |
+| 4.77s | job:1 | finished |  |
+| 4.78s | job:4 | finished |  |
+| 6.80s | job:5 | claimed | attempt 1 |
+| 6.98s | job:5 | finished |  |
+
+</details>
+
+### 3. A timed reminder comes due · ✅ Passed
+
+| | |
+| --- | --- |
+| **What we did** | Stored a reminder due in 3 seconds, then tried to fire it twice and to add its send twice. |
+| **Expected** | It fires after the due time, from Postgres, and is sent once. |
+| **Observed** | Beat fired the reminder after its due time and wrote 1 outbox row, sent 1 time. A second insert with the same key was refused. |
+
+![Timeline for case 3](results/case-3.svg)
+
+<details><summary>All 4 events as a table</summary>
+
+| Time | Subject | Event | Detail |
+| --- | --- | --- | --- |
+| 0.01s | reminder:1 | reminder_set | due in 3s |
+| 4.26s | outbox:1 | outbox_added | reminder:1 |
+| 4.26s | reminder:1 | fired |  |
+| 6.26s | outbox:1 | sent |  |
+
+</details>
+
+### 4. A slow queue has a backlog · ✅ Passed
+
+| | |
+| --- | --- |
+| **What we did** | Queued four 3-second extraction jobs on a one-worker queue, then four short mail jobs. |
+| **Expected** | Mail finishes straight away while extraction is still working through its backlog. |
+| **Observed** | 4 mail jobs finished in 0.5s. At that moment the extract queue had 1 running and 3 waiting. |
 
 ![Timeline for case 4](results/case-4.svg)
 
-One finding worth knowing before choosing timeouts: with Redis as the broker, a job held by a killed worker is not handed back until the broker's visibility timeout passes (one hour as configured here). In case 1 it was the Postgres sweep that recovered the job, in about ten seconds. Recovery time is a setting we own, not a broker default.
+<details><summary>All 32 events as a table</summary>
+
+| Time | Subject | Event | Detail |
+| --- | --- | --- | --- |
+| 0.02s | job:1 | accepted | extract sleep=3 |
+| 0.06s | job:1 | published |  |
+| 0.08s | job:1 | claimed | attempt 1 |
+| 0.12s | job:2 | accepted | extract sleep=3 |
+| 0.16s | job:2 | published |  |
+| 0.18s | job:3 | accepted | extract sleep=3 |
+| 0.21s | job:3 | published |  |
+| 0.24s | job:4 | accepted | extract sleep=3 |
+| 0.28s | job:4 | published |  |
+| 0.31s | job:5 | accepted | mail sleep=0.2 |
+| 0.34s | job:5 | published |  |
+| 0.35s | job:5 | claimed | attempt 1 |
+| 0.36s | job:6 | accepted | mail sleep=0.2 |
+| 0.39s | job:6 | published |  |
+| 0.39s | job:6 | claimed | attempt 1 |
+| 0.41s | job:7 | accepted | mail sleep=0.2 |
+| 0.44s | job:7 | published |  |
+| 0.44s | job:7 | claimed | attempt 1 |
+| 0.47s | job:8 | accepted | mail sleep=0.2 |
+| 0.50s | job:8 | published |  |
+| 0.51s | job:8 | claimed | attempt 1 |
+| 0.58s | job:5 | finished |  |
+| 0.62s | job:6 | finished |  |
+| 0.67s | job:7 | finished |  |
+| 0.74s | job:8 | finished |  |
+| 3.11s | job:1 | finished |  |
+| 3.48s | job:2 | claimed | attempt 1 |
+| 6.51s | job:2 | finished |  |
+| 7.32s | job:3 | claimed | attempt 1 |
+| 10.34s | job:3 | finished |  |
+| 11.49s | job:4 | claimed | attempt 1 |
+| 14.52s | job:4 | finished |  |
+
+</details>
+
+### 5. The same job is delivered four times · ✅ Passed
+
+| | |
+| --- | --- |
+| **What we did** | Published one row id to the broker four times. |
+| **Expected** | One delivery claims the row; the other three are skipped. |
+| **Observed** | 4 deliveries of the same row id: 1 claimed it, 3 were skipped. attempts=1, finished=1. |
+
+![Timeline for case 5](results/case-5.svg)
+
+<details><summary>All 7 events as a table</summary>
+
+| Time | Subject | Event | Detail |
+| --- | --- | --- | --- |
+| 0.01s | job:1 | accepted | mail sleep=1 |
+| 0.03s | job:1 | published |  |
+| 0.03s | job:1 | claimed | attempt 1 |
+| 0.05s | job:1 | duplicate | delivery skipped: the row was not claimable |
+| 0.05s | job:1 | duplicate | delivery skipped: the row was not claimable |
+| 0.05s | job:1 | duplicate | delivery skipped: the row was not claimable |
+| 1.05s | job:1 | finished |  |
+
+</details>
+
+### 6. A job keeps failing · ✅ Passed
+
+| | |
+| --- | --- |
+| **What we did** | Queued a job that always raises, with the attempt limit set to 3. |
+| **Expected** | It is retried with a growing wait, then set aside for a person to look at. |
+| **Observed** | Failed 3 times with a longer wait before each retry, then marked &#x27;dead&#x27; with the error kept: RuntimeError: simulated failure. |
+
+![Timeline for case 6](results/case-6.svg)
+
+<details><summary>All 10 events as a table</summary>
+
+| Time | Subject | Event | Detail |
+| --- | --- | --- | --- |
+| 0.02s | job:1 | accepted | mail fail |
+| 0.04s | job:1 | published |  |
+| 0.05s | job:1 | claimed | attempt 1 |
+| 0.07s | job:1 | retry | RuntimeError: simulated failure |
+| 3.07s | job:1 | published | by the sweep |
+| 3.10s | job:1 | claimed | attempt 2 |
+| 3.11s | job:1 | retry | RuntimeError: simulated failure |
+| 11.08s | job:1 | published | by the sweep |
+| 11.09s | job:1 | claimed | attempt 3 |
+| 11.10s | job:1 | dead | RuntimeError: simulated failure |
+
+</details>
+
+## What this run does not show
+
+1. Workers did placeholder work (a sleep, or a raised error). "Finished once" is proven for the database row; a real call to another system still needs its own idempotency key.
+2. This run used Celery's **threads** pool on Darwin arm64. Linux containers use the prefork pool; rerun there before relying on these results.
+3. One Redis with no persistence and no failover. Two beat processes running at once was not tested.
 
 ## Run it
 
@@ -59,26 +229,14 @@ Needs Docker and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 docker compose up -d --wait          # Postgres on 55432, Redis on 56379, both in memory
-uv run python -m queue_poc.prove     # about 90 seconds; prints PASS or FAIL and rewrites results/
-open results/report.html
-uv run pytest                        # 12 tests; the database ones skip if Postgres is down
+uv run python -m queue_poc.prove     # about 90 seconds; rewrites this README and results/
+uv run pytest
 docker compose down
 ```
 
-`prove.py` starts and stops its own Celery workers and beat. To rebuild the report from the last run without any services: `uv run python -m queue_poc.report`.
-
-To drive it by hand:
-
-```bash
-uv run celery -A queue_poc.tasks worker -Q mail,extract,browser,outbox,default -c 4 -P threads
-uv run celery -A queue_poc.tasks beat
-uv run uvicorn queue_poc.receiver:create_app --factory --port 8030
-curl -X POST localhost:8030/jobs -H 'content-type: application/json' -d '{"kind":"mail","value":"sleep=1"}'
-```
+To rebuild this page from the last run without any services: `uv run python -m queue_poc.report`.
 
 ## Worker rules
-
-These are what make the results above hold. The real workers should keep them.
 
 | Rule | Where |
 | --- | --- |
@@ -93,24 +251,17 @@ These are what make the results above hold. The real workers should keep them.
 | A send is a row with a unique key, written with its cause | `outbox` table |
 | Exactly one beat process | Deployment |
 
-## What this does not show
-
-- Workers do placeholder work (`sleep` or `fail`). "Finished once" is proven for the database row. A real call to another system between claim and finish still needs its own idempotency key.
-- It ran with Celery's thread pool, because the default prefork pool fails on macOS with Python 3.13. Linux containers use prefork; rerun `prove.py` there before relying on the results. The thread pool does not enforce the hard time limit.
-- One Redis, no persistence, no failover. Two beat processes at once was not tested.
-- No dashboard for jobs that were set aside, and no way to re-run one except by editing the row.
-- Timings in `prove.py` are shortened to seconds. Production values (see `config.py`) are minutes.
-
 ## Layout
 
 ```
 src/queue_poc/
   config.py     connection strings, limits, queue names
-  db.py         Postgres: inbox, outbox, reminders, and the event log the report reads
+  db.py         Postgres: inbox, outbox, reminders, and the event log this page is drawn from
   tasks.py      Celery app and settings, the job task, sweep, reminders, outbox send
   receiver.py   accept-then-publish HTTP endpoint
   prove.py      the six failure cases, run for real
-  report.py     results.json to report.html, RESULTS.md and the SVG timelines
+  report.py     results.json to this README and the SVG images
 tests/          database rules and report building
-results/        output of the latest run (committed so it can be read without running anything)
+results/        raw data and images from the latest run
+docs/           the job life-cycle picture
 ```

@@ -1,8 +1,3 @@
-"""Runs the failure cases against real Postgres, Redis and Celery, then writes the results and the report.
-
-    docker compose up -d --wait
-    uv run python -m queue_poc.prove
-"""
 from __future__ import annotations
 
 import datetime
@@ -18,7 +13,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-# Short timings so the run takes about a minute. Set before config is imported; workers inherit them.
 os.environ.setdefault("QUEUE_POC_STALE_SECONDS", "6")
 os.environ.setdefault("QUEUE_POC_REPUBLISH_SECONDS", "4")
 os.environ.setdefault("QUEUE_POC_SWEEP_SECONDS", "2")
@@ -30,8 +24,6 @@ import redis  # noqa: E402
 
 from . import config, db, report, tasks  # noqa: E402
 
-# Celery's default prefork pool fails on macOS with Python 3.13 (child processes start without the task
-# table), so a laptop run uses threads. Linux containers use prefork.
 POOL = os.environ.get("QUEUE_POC_POOL", "threads" if sys.platform == "darwin" else "prefork")
 RESULTS = Path(os.environ.get("QUEUE_POC_RESULTS_DIR", "results"))
 SCRATCH = Path(tempfile.mkdtemp(prefix="queue-poc-"))
@@ -59,7 +51,6 @@ def beat() -> subprocess.Popen[bytes]:
 
 
 def kill(process: subprocess.Popen[bytes]) -> None:
-    """SIGKILL the worker and its children: no chance to finish or hand the job back."""
     os.killpg(process.pid, signal.SIGKILL)
     process.wait()
     running.remove(process)
@@ -101,7 +92,6 @@ def broker() -> redis.Redis:
 
 
 def fresh() -> None:
-    """Empty Postgres and Redis and start the case clock. Workers started before this are stopped."""
     global started_at
     stop_all()
     db.reset()
@@ -110,7 +100,6 @@ def fresh() -> None:
 
 
 def begin_after_warm_up(seconds: float = 4) -> None:
-    """Let the workers connect, then restart the clock so the timeline starts at the first job."""
     global started_at
     time.sleep(seconds)
     db.reset()

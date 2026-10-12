@@ -1,4 +1,3 @@
-"""The report is built from results.json alone, so it is tested without any service running."""
 from __future__ import annotations
 
 import json
@@ -40,12 +39,15 @@ def test_a_lane_is_cut_into_one_segment_per_state():
 
 
 def test_build_writes_every_output_and_escapes_text(tmp_path):
-    (tmp_path / "results.json").write_text(json.dumps(RESULTS))
-    page = report.build(tmp_path)
-    assert sorted(p.name for p in tmp_path.iterdir()) == [
-        "RESULTS.md", "case-1.svg", "design.svg", "report.html", "results.json",
-    ]
-    html = page.read_text()
-    assert "A &lt;worker&gt; is killed" in html and "<worker>" not in html
-    assert "worker killed at 1.0s" in (tmp_path / "case-1.svg").read_text()
-    assert "**1 of 1 failure cases behaved as designed.**" in (tmp_path / "RESULTS.md").read_text()
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "results.json").write_text(json.dumps(RESULTS))
+    page = report.build(results)
+    assert page == tmp_path / "README.md"
+    assert sorted(p.name for p in results.iterdir()) == ["case-1.svg", "design.svg", "legend.svg", "results.json"]
+    text = page.read_text()
+    assert "### 1. A &lt;worker&gt; is killed · ✅ Passed" in text and "<worker>" not in text
+    assert "# 1 of 1" in text
+    assert "![Timeline for case 1](results/case-1.svg)" in text
+    assert "| 1.00s | chaos | chaos | worker killed |" in text
+    assert "worker killed at 1.0s" in (results / "case-1.svg").read_text()

@@ -1,4 +1,3 @@
-"""Inbox, outbox and reminder rules. Needs `docker compose up -d --wait`; skipped when Postgres is not running."""
 from __future__ import annotations
 
 import pytest

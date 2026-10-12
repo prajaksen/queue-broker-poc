@@ -12,10 +12,8 @@ log = logging.getLogger("queue_poc")
 
 app = Celery("queue_poc", broker=config.REDIS_URL)
 app.conf.update(
-    # Acknowledge after the work, so a job on a worker that dies is not silently dropped.
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-    # Take one job at a time; a worker must not sit on jobs another worker could run.
     worker_prefetch_multiplier=1,
     task_ignore_result=True,
     task_default_queue=config.DEFAULT_QUEUE,
@@ -36,7 +34,6 @@ def publish(inbox_id: int, kind: str) -> None:
 
 
 def enqueue(kind: str, value: str) -> int:
-    """Store the job, then tell the broker. A failed publish is repaired by the sweep."""
     inbox_id = db.accept(kind, value)
     try:
         publish(inbox_id, kind)
@@ -47,7 +44,6 @@ def enqueue(kind: str, value: str) -> int:
 
 
 def work(row: dict[str, Any]) -> None:
-    """Stand-in for real work. value is 'sleep=<seconds>' or 'fail'."""
     name, _, argument = row["value"].partition("=")
     if name == "fail":
         raise RuntimeError("simulated failure")

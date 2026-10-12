@@ -1,5 +1,3 @@
-"""Postgres is the record. Every state change also writes an `events` row in the same statement,
-which is what the report draws its timelines from."""
 from __future__ import annotations
 
 from typing import Any
@@ -89,9 +87,6 @@ def mark(subject: str, event: str, detail: str = "") -> None:
 
 def events() -> list[dict[str, Any]]:
     return _all("SELECT subject, event, detail, extract(epoch FROM at)::float8 AS t FROM events ORDER BY id")
-
-
-# Inbox: the record of work that was accepted. The broker only carries the row id.
 
 
 def accept(kind: str, value: str) -> int:
@@ -193,9 +188,6 @@ def inbox_rows(ids: list[int] | None = None) -> list[dict[str, Any]]:
     return _all("SELECT * FROM inbox WHERE id = ANY(%s) ORDER BY id", (ids,))
 
 
-# Outbox: something that must leave the system exactly once.
-
-
 def add_outbox(idempotency_key: str, kind: str, payload: str) -> int | None:
     row = _one(
         "WITH new AS ("
@@ -210,7 +202,6 @@ def add_outbox(idempotency_key: str, kind: str, payload: str) -> int | None:
 
 
 def send_outbox(outbox_id: int) -> bool:
-    # The real worker calls the external system between claim and mark, passing the idempotency key.
     row = _one(
         "WITH changed AS ("
         "  UPDATE outbox SET status = 'sent', sent_at = now(), sends = sends + 1 "
@@ -230,9 +221,6 @@ def outbox_rows() -> list[dict[str, Any]]:
     return _all("SELECT * FROM outbox ORDER BY id")
 
 
-# Reminders: a due time in Postgres, not a long countdown in the broker.
-
-
 def add_reminder(case_ref: str, seconds_from_now: float) -> int:
     row = _one(
         "WITH new AS ("
@@ -247,7 +235,6 @@ def add_reminder(case_ref: str, seconds_from_now: float) -> int:
 
 
 def fire_due_reminders() -> list[int]:
-    """Marks due reminders fired and writes their outbox rows in one statement, so neither can exist alone."""
     rows = _all(
         "WITH fired AS ("
         "  UPDATE reminders SET status = 'fired', fired_at = now() "

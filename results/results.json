@@ -1,6 +1,6 @@
 {
   "environment": {
-    "ran_at": "2026-10-12T20:21:13+00:00",
+    "ran_at": "2026-10-12T20:29:33+00:00",
     "platform": "Darwin arm64",
     "python": "3.13.15",
     "celery": "5.6.3",
@@ -21,56 +21,56 @@
       "did": "Started a 3-second job, then sent SIGKILL to the worker while it was running.",
       "expect": "The job runs again on another worker and finishes exactly once.",
       "passed": true,
-      "observed": "Row stayed 'running' after the kill. The sweep queued it again and a second worker finished it 12s later. attempts=2, finished=1.",
-      "seconds": 13.03,
+      "observed": "Row stayed 'running' after the kill. The sweep queued it again and a second worker finished it 10s later. attempts=2, finished=1.",
+      "seconds": 11.08,
       "events": [
         {
           "subject": "job:1",
           "event": "accepted",
           "detail": "mail sleep=3",
-          "t": 0.014
+          "t": 0.011
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "",
-          "t": 0.065
+          "t": 0.04
         },
         {
           "subject": "job:1",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 0.067
+          "t": 0.041
         },
         {
           "subject": "chaos",
           "event": "chaos",
           "detail": "worker killed",
-          "t": 1.103
+          "t": 1.07
         },
         {
           "subject": "job:1",
           "event": "stale",
           "detail": "worker stopped mid-job",
-          "t": 9.711
+          "t": 7.892
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "by the sweep",
-          "t": 9.731
+          "t": 7.901
         },
         {
           "subject": "job:1",
           "event": "claimed",
           "detail": "attempt 2",
-          "t": 9.769
+          "t": 7.922
         },
         {
           "subject": "job:1",
           "event": "finished",
           "detail": "",
-          "t": 12.791
+          "t": 10.933
         }
       ],
       "jobs": [
@@ -93,163 +93,163 @@
       "expect": "All five jobs still finish, because their rows are in Postgres.",
       "passed": true,
       "observed": "Redis held 5 messages, then 0 after the wipe. The sweep published all 5 again from Postgres; each finished once (5 finishes).",
-      "seconds": 8.86,
+      "seconds": 7.2,
       "events": [
         {
           "subject": "job:1",
           "event": "accepted",
           "detail": "mail sleep=0.1",
-          "t": 0.014
+          "t": 0.029
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "",
-          "t": 0.034
+          "t": 0.076
         },
         {
           "subject": "job:2",
           "event": "accepted",
           "detail": "mail sleep=0.1",
-          "t": 0.053
+          "t": 0.106
         },
         {
           "subject": "job:2",
           "event": "published",
           "detail": "",
-          "t": 0.07
+          "t": 0.145
         },
         {
           "subject": "job:3",
           "event": "accepted",
           "detail": "mail sleep=0.1",
-          "t": 0.086
+          "t": 0.18
         },
         {
           "subject": "job:3",
           "event": "published",
           "detail": "",
-          "t": 0.105
+          "t": 0.213
         },
         {
           "subject": "job:4",
           "event": "accepted",
           "detail": "mail sleep=0.1",
-          "t": 0.12
+          "t": 0.252
         },
         {
           "subject": "job:4",
           "event": "published",
           "detail": "",
-          "t": 0.14
+          "t": 0.284
         },
         {
           "subject": "job:5",
           "event": "accepted",
           "detail": "mail sleep=0.1",
-          "t": 0.158
+          "t": 0.313
         },
         {
           "subject": "job:5",
           "event": "published",
           "detail": "",
-          "t": 0.181
+          "t": 0.34
         },
         {
           "subject": "chaos",
           "event": "chaos",
           "detail": "Redis wiped",
-          "t": 1.228
+          "t": 1.381
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "by the sweep",
-          "t": 6.811
+          "t": 4.56
         },
         {
           "subject": "job:3",
           "event": "published",
           "detail": "by the sweep",
-          "t": 6.812
+          "t": 4.56
         },
         {
           "subject": "job:5",
           "event": "published",
           "detail": "by the sweep",
-          "t": 6.812
+          "t": 4.56
         },
         {
           "subject": "job:4",
           "event": "published",
           "detail": "by the sweep",
-          "t": 6.812
+          "t": 4.56
         },
         {
           "subject": "job:2",
           "event": "published",
           "detail": "by the sweep",
-          "t": 6.812
+          "t": 4.56
         },
         {
           "subject": "job:2",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 6.98
+          "t": 4.65
         },
         {
           "subject": "job:1",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 6.98
+          "t": 4.65
         },
         {
           "subject": "job:3",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 6.989
+          "t": 4.651
         },
         {
           "subject": "job:4",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 7.003
+          "t": 4.658
         },
         {
           "subject": "job:2",
           "event": "finished",
           "detail": "",
-          "t": 7.118
-        },
-        {
-          "subject": "job:1",
-          "event": "finished",
-          "detail": "",
-          "t": 7.133
+          "t": 4.769
         },
         {
           "subject": "job:3",
           "event": "finished",
           "detail": "",
-          "t": 7.135
+          "t": 4.769
+        },
+        {
+          "subject": "job:1",
+          "event": "finished",
+          "detail": "",
+          "t": 4.771
         },
         {
           "subject": "job:4",
           "event": "finished",
           "detail": "",
-          "t": 7.141
+          "t": 4.779
         },
         {
           "subject": "job:5",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 8.514
+          "t": 6.796
         },
         {
           "subject": "job:5",
           "event": "finished",
           "detail": "",
-          "t": 8.634
+          "t": 6.982
         }
       ],
       "jobs": [
@@ -308,31 +308,31 @@
       "expect": "It fires after the due time, from Postgres, and is sent once.",
       "passed": true,
       "observed": "Beat fired the reminder after its due time and wrote 1 outbox row, sent 1 time. A second insert with the same key was refused.",
-      "seconds": 9.72,
+      "seconds": 9.5,
       "events": [
         {
           "subject": "reminder:1",
           "event": "reminder_set",
           "detail": "due in 3s",
-          "t": 0.012
+          "t": 0.011
         },
         {
           "subject": "outbox:1",
           "event": "outbox_added",
           "detail": "reminder:1",
-          "t": 4.822
+          "t": 4.264
         },
         {
           "subject": "reminder:1",
           "event": "fired",
           "detail": "",
-          "t": 4.822
+          "t": 4.265
         },
         {
           "subject": "outbox:1",
           "event": "sent",
           "detail": "",
-          "t": 6.663
+          "t": 6.265
         }
       ],
       "jobs": [],
@@ -351,200 +351,200 @@
       "did": "Queued four 3-second extraction jobs on a one-worker queue, then four short mail jobs.",
       "expect": "Mail finishes straight away while extraction is still working through its backlog.",
       "passed": true,
-      "observed": "4 mail jobs finished in 0.4s. At that moment the extract queue had 1 running and 3 waiting.",
-      "seconds": 14.47,
+      "observed": "4 mail jobs finished in 0.5s. At that moment the extract queue had 1 running and 3 waiting.",
+      "seconds": 14.64,
       "events": [
         {
           "subject": "job:1",
           "event": "accepted",
           "detail": "extract sleep=3",
-          "t": 0.014
+          "t": 0.021
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "",
-          "t": 0.037
+          "t": 0.055
         },
         {
           "subject": "job:1",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 0.042
-        },
-        {
-          "subject": "job:2",
-          "event": "accepted",
-          "detail": "extract sleep=3",
-          "t": 0.051
-        },
-        {
-          "subject": "job:2",
-          "event": "published",
-          "detail": "",
-          "t": 0.066
-        },
-        {
-          "subject": "job:3",
-          "event": "accepted",
-          "detail": "extract sleep=3",
           "t": 0.079
         },
         {
+          "subject": "job:2",
+          "event": "accepted",
+          "detail": "extract sleep=3",
+          "t": 0.123
+        },
+        {
+          "subject": "job:2",
+          "event": "published",
+          "detail": "",
+          "t": 0.156
+        },
+        {
+          "subject": "job:3",
+          "event": "accepted",
+          "detail": "extract sleep=3",
+          "t": 0.181
+        },
+        {
           "subject": "job:3",
           "event": "published",
           "detail": "",
-          "t": 0.094
+          "t": 0.21
         },
         {
           "subject": "job:4",
           "event": "accepted",
           "detail": "extract sleep=3",
-          "t": 0.112
+          "t": 0.236
         },
         {
           "subject": "job:4",
           "event": "published",
           "detail": "",
-          "t": 0.128
+          "t": 0.279
         },
         {
           "subject": "job:5",
           "event": "accepted",
           "detail": "mail sleep=0.2",
-          "t": 0.142
+          "t": 0.313
         },
         {
           "subject": "job:5",
           "event": "published",
           "detail": "",
-          "t": 0.158
+          "t": 0.343
         },
         {
           "subject": "job:5",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 0.166
+          "t": 0.351
         },
         {
           "subject": "job:6",
           "event": "accepted",
           "detail": "mail sleep=0.2",
-          "t": 0.174
+          "t": 0.365
         },
         {
           "subject": "job:6",
           "event": "published",
-          "detail": "",
-          "t": 0.191
-        },
-        {
-          "subject": "job:6",
-          "event": "claimed",
-          "detail": "attempt 1",
-          "t": 0.192
-        },
-        {
-          "subject": "job:7",
-          "event": "accepted",
-          "detail": "mail sleep=0.2",
-          "t": 0.209
-        },
-        {
-          "subject": "job:7",
-          "event": "published",
-          "detail": "",
-          "t": 0.228
-        },
-        {
-          "subject": "job:7",
-          "event": "claimed",
-          "detail": "attempt 1",
-          "t": 0.233
-        },
-        {
-          "subject": "job:8",
-          "event": "accepted",
-          "detail": "mail sleep=0.2",
-          "t": 0.246
-        },
-        {
-          "subject": "job:8",
-          "event": "published",
-          "detail": "",
-          "t": 0.263
-        },
-        {
-          "subject": "job:8",
-          "event": "claimed",
-          "detail": "attempt 1",
-          "t": 0.267
-        },
-        {
-          "subject": "job:5",
-          "event": "finished",
           "detail": "",
           "t": 0.39
         },
         {
           "subject": "job:6",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.393
+        },
+        {
+          "subject": "job:7",
+          "event": "accepted",
+          "detail": "mail sleep=0.2",
+          "t": 0.411
+        },
+        {
+          "subject": "job:7",
+          "event": "published",
+          "detail": "",
+          "t": 0.439
+        },
+        {
+          "subject": "job:7",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.444
+        },
+        {
+          "subject": "job:8",
+          "event": "accepted",
+          "detail": "mail sleep=0.2",
+          "t": 0.467
+        },
+        {
+          "subject": "job:8",
+          "event": "published",
+          "detail": "",
+          "t": 0.498
+        },
+        {
+          "subject": "job:8",
+          "event": "claimed",
+          "detail": "attempt 1",
+          "t": 0.506
+        },
+        {
+          "subject": "job:5",
           "event": "finished",
           "detail": "",
-          "t": 0.411
+          "t": 0.583
+        },
+        {
+          "subject": "job:6",
+          "event": "finished",
+          "detail": "",
+          "t": 0.618
         },
         {
           "subject": "job:7",
           "event": "finished",
           "detail": "",
-          "t": 0.45
+          "t": 0.673
         },
         {
           "subject": "job:8",
           "event": "finished",
           "detail": "",
-          "t": 0.485
+          "t": 0.737
         },
         {
           "subject": "job:1",
           "event": "finished",
           "detail": "",
-          "t": 3.064
+          "t": 3.107
         },
         {
           "subject": "job:2",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 3.294
+          "t": 3.475
         },
         {
           "subject": "job:2",
           "event": "finished",
           "detail": "",
-          "t": 6.33
+          "t": 6.511
         },
         {
           "subject": "job:3",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 7.14
+          "t": 7.318
         },
         {
           "subject": "job:3",
           "event": "finished",
           "detail": "",
-          "t": 10.169
+          "t": 10.34
         },
         {
           "subject": "job:4",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 11.307
+          "t": 11.494
         },
         {
           "subject": "job:4",
           "event": "finished",
           "detail": "",
-          "t": 14.329
+          "t": 14.515
         }
       ],
       "jobs": [
@@ -630,49 +630,49 @@
       "expect": "One delivery claims the row; the other three are skipped.",
       "passed": true,
       "observed": "4 deliveries of the same row id: 1 claimed it, 3 were skipped. attempts=1, finished=1.",
-      "seconds": 3.21,
+      "seconds": 3.2,
       "events": [
         {
           "subject": "job:1",
           "event": "accepted",
           "detail": "mail sleep=1",
-          "t": 0.013
+          "t": 0.011
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "",
-          "t": 0.035
+          "t": 0.025
         },
         {
           "subject": "job:1",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 0.04
+          "t": 0.028
         },
         {
           "subject": "job:1",
           "event": "duplicate",
           "detail": "delivery skipped: the row was not claimable",
-          "t": 0.073
+          "t": 0.049
         },
         {
           "subject": "job:1",
           "event": "duplicate",
           "detail": "delivery skipped: the row was not claimable",
-          "t": 0.081
+          "t": 0.053
         },
         {
           "subject": "job:1",
           "event": "duplicate",
           "detail": "delivery skipped: the row was not claimable",
-          "t": 0.085
+          "t": 0.053
         },
         {
           "subject": "job:1",
           "event": "finished",
           "detail": "",
-          "t": 1.068
+          "t": 1.053
         }
       ],
       "jobs": [
@@ -701,61 +701,61 @@
           "subject": "job:1",
           "event": "accepted",
           "detail": "mail fail",
-          "t": 0.011
+          "t": 0.019
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "",
-          "t": 0.024
+          "t": 0.045
         },
         {
           "subject": "job:1",
           "event": "claimed",
           "detail": "attempt 1",
-          "t": 0.029
+          "t": 0.054
         },
         {
           "subject": "job:1",
           "event": "retry",
           "detail": "RuntimeError: simulated failure",
-          "t": 0.043
+          "t": 0.075
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "by the sweep",
-          "t": 5.135
+          "t": 3.067
         },
         {
           "subject": "job:1",
           "event": "claimed",
           "detail": "attempt 2",
-          "t": 5.171
+          "t": 3.096
         },
         {
           "subject": "job:1",
           "event": "retry",
           "detail": "RuntimeError: simulated failure",
-          "t": 5.193
+          "t": 3.113
         },
         {
           "subject": "job:1",
           "event": "published",
           "detail": "by the sweep",
-          "t": 11.119
+          "t": 11.077
         },
         {
           "subject": "job:1",
           "event": "claimed",
           "detail": "attempt 3",
-          "t": 11.136
+          "t": 11.092
         },
         {
           "subject": "job:1",
           "event": "dead",
           "detail": "RuntimeError: simulated failure",
-          "t": 11.147
+          "t": 11.103
         }
       ],
       "jobs": [
